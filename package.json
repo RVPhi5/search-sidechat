@@ -1,0 +1,16 @@
+{
+  "name": "search-sidechat",
+  "version": "1.0.0",
+  "description": "Searchable database of Sidechat posts",
+  "type": "module",
+  "scripts": {
+    "login": "node login.js",
+    "scrape": "node scrape.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "sidechat.js": "^2.6.5",
+    "sql.js": "^1.11.0"
+  }
+}

@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sidechat Search</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f0f0f;
+      --surface: #1a1a1a;
+      --surface-hover: #222;
+      --border: #2a2a2a;
+      --text: #e8e8e8;
+      --text-dim: #888;
+      --accent: #6c5ce7;
+      --accent-soft: #6c5ce720;
+      --green: #00b894;
+      --red: #e17055;
+      --radius: 10px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 24px 16px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    header h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .stats-bar {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      margin-top: 8px;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+
+    .search-box {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--bg);
+      padding: 12px 0 16px;
+    }
+
+    .search-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .search-row input {
+      flex: 1;
+      padding: 12px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .search-row input:focus {
+      border-color: var(--accent);
+    }
+
+    .search-row input::placeholder {
+      color: var(--text-dim);
+    }
+
+    .controls {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+
+    .controls select {
+      padding: 6px 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.82rem;
+      cursor: pointer;
+    }
+
+    .result-count {
+      margin-left: auto;
+      font-size: 0.82rem;
+      color: var(--text-dim);
+      align-self: center;
+    }
+
+    .posts {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .post {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      transition: background 0.12s;
+    }
+
+    .post:hover {
+      background: var(--surface-hover);
+    }
+
+    .post-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 0.82rem;
+      color: var(--text-dim);
+    }
+
+    .post-alias {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .post-emoji {
+      font-size: 1rem;
+    }
+
+    .post-text {
+      font-size: 0.95rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .post-footer {
+      display: flex;
+      gap: 16px;
+      margin-top: 10px;
+      font-size: 0.78rem;
+      color: var(--text-dim);
+    }
+
+    .vote-positive { color: var(--green); }
+    .vote-negative { color: var(--red); }
+
+    .post-media {
+      margin-top: 8px;
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .post-media img, .post-media video {
+      max-width: 100%;
+      max-height: 400px;
+      border-radius: 8px;
+      object-fit: contain;
+      background: #000;
+    }
+
+    .pagination {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      margin-top: 24px;
+      padding-bottom: 24px;
+    }
+
+    .pagination button {
+      padding: 8px 18px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+
+    .pagination button:disabled {
+      opacity: 0.3;
+      cursor: default;
+    }
+
+    .pagination span {
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+
+    .empty {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-dim);
+    }
+
+    .empty p:first-child {
+      font-size: 1.1rem;
+      margin-bottom: 6px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-dim);
+    }
+
+    mark {
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-radius: 2px;
+      padding: 0 2px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Sidechat Search</h1>
+      <div class="stats-bar" id="stats"></div>
+    </header>
+
+    <div class="search-box">
+      <div class="search-row">
+        <input type="text" id="query" placeholder="Search posts..." autofocus>
+      </div>
+      <div class="controls">
+        <select id="sort">
+          <option value="">Relevance</option>
+          <option value="created_at">Date</option>
+          <option value="vote_total">Votes</option>
+          <option value="comment_count">Comments</option>
+        </select>
+        <select id="order">
+          <option value="DESC">Descending</option>
+          <option value="ASC">Ascending</option>
+        </select>
+        <span class="result-count" id="resultCount"></span>
+      </div>
+    </div>
+
+    <div id="posts" class="posts"></div>
+    <div id="pagination" class="pagination"></div>
+  </div>
+
+  <script>
+    const $query = document.getElementById("query");
+    const $sort = document.getElementById("sort");
+    const $order = document.getElementById("order");
+    const $posts = document.getElementById("posts");
+    const $pagination = document.getElementById("pagination");
+    const $resultCount = document.getElementById("resultCount");
+    const $stats = document.getElementById("stats");
+
+    let currentPage = 1;
+    let debounceTimer;
+
+    async function loadStats() {
+      try {
+        const res = await fetch("/api/stats");
+        const s = await res.json();
+        if (!s.total_posts) {
+          $stats.textContent = "No posts in database yet. Run the scraper first.";
+          return;
+        }
+        const oldest = new Date(s.oldest_post).toLocaleDateString();
+        const newest = new Date(s.newest_post).toLocaleDateString();
+        $stats.innerHTML = [
+          `<span>${s.total_posts.toLocaleString()} posts</span>`,
+          `<span>${oldest} \u2013 ${newest}</span>`,
+          `<span>avg ${s.avg_votes} votes</span>`,
+        ].join("");
+      } catch {}
+    }
+
+    async function search(page = 1) {
+      currentPage = page;
+      const q = $query.value.trim();
+      const sort = $sort.value;
+      const order = $order.value;
+
+      const params = new URLSearchParams({ page });
+      if (q) params.set("q", q);
+      if (sort) params.set("sort", sort);
+      params.set("order", order);
+
+      $posts.innerHTML = '<div class="loading">Searching...</div>';
+
+      try {
+        const res = await fetch(`/api/search?${params}`);
+        const data = await res.json();
+
+        if (data.error) {
+          $posts.innerHTML = `<div class="empty"><p>Error</p><p>${data.error}</p></div>`;
+          $resultCount.textContent = "";
+          $pagination.innerHTML = "";
+          return;
+        }
+
+        $resultCount.textContent = `${data.total.toLocaleString()} result${data.total === 1 ? "" : "s"}`;
+        renderPosts(data.posts, q);
+        renderPagination(data.page, data.pages);
+      } catch (err) {
+        $posts.innerHTML = `<div class="empty"><p>Failed to search</p><p>${err.message}</p></div>`;
+      }
+    }
+
+    function escapeHTML(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function highlightText(text, query) {
+      if (!query) return escapeHTML(text);
+      const escaped = escapeHTML(text);
+      const words = query.split(/\s+/).filter(Boolean).map(w =>
+        w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      );
+      if (!words.length) return escaped;
+      const re = new RegExp(`(${words.join("|")})`, "gi");
+      return escaped.replace(re, "<mark>$1</mark>");
+    }
+
+    function timeAgo(dateStr) {
+      const diff = Date.now() - new Date(dateStr).getTime();
+      const mins = Math.floor(diff / 60000);
+      if (mins < 60) return `${mins}m ago`;
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return `${hrs}h ago`;
+      const days = Math.floor(hrs / 24);
+      if (days < 30) return `${days}d ago`;
+      const months = Math.floor(days / 30);
+      return `${months}mo ago`;
+    }
+
+    function renderPosts(posts, query) {
+      if (!posts.length) {
+        $posts.innerHTML = '<div class="empty"><p>No posts found</p><p>Try a different search term</p></div>';
+        return;
+      }
+
+      $posts.innerHTML = posts.map(p => {
+        const assets = JSON.parse(p.assets || "[]");
+        const voteClass = p.vote_total > 0 ? "vote-positive" : p.vote_total < 0 ? "vote-negative" : "";
+
+        const mediaEls = assets.map(a => {
+          const proxied = `/api/asset?url=${encodeURIComponent(a.url)}`;
+          if (a.type === "video") return `<video src="${proxied}" controls preload="none"></video>`;
+          return `<img src="${proxied}" loading="lazy" alt="Post image">`;
+        });
+
+        return `
+          <div class="post">
+            <div class="post-header">
+              ${p.identity_emoji ? `<span class="post-emoji">${p.identity_emoji}</span>` : ""}
+              <span class="post-alias">${escapeHTML(p.identity_name || p.alias || "Anonymous")}</span>
+              <span>\u00B7</span>
+              <span>${timeAgo(p.created_at)}</span>
+            </div>
+            <div class="post-text">${highlightText(p.text, query)}</div>
+            ${mediaEls.length ? `<div class="post-media">${mediaEls.join("")}</div>` : ""}
+            <div class="post-footer">
+              <span class="${voteClass}">\u25B2 ${p.vote_total}</span>
+              <span>\uD83D\uDCAC ${p.comment_count}</span>
+              <span>${new Date(p.created_at).toLocaleString()}</span>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderPagination(page, pages) {
+      if (pages <= 1) { $pagination.innerHTML = ""; return; }
+      $pagination.innerHTML = `
+        <button ${page <= 1 ? "disabled" : ""} onclick="search(${page - 1})">\u2190 Prev</button>
+        <span>${page} / ${pages}</span>
+        <button ${page >= pages ? "disabled" : ""} onclick="search(${page + 1})">Next \u2192</button>
+      `;
+    }
+
+    $query.addEventListener("input", () => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => search(1), 250);
+    });
+
+    $sort.addEventListener("change", () => search(1));
+    $order.addEventListener("change", () => search(1));
+
+    $query.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { clearTimeout(debounceTimer); search(1); }
+    });
+
+    loadStats();
+    search(1);
+  </script>
+</body>
+</html>
