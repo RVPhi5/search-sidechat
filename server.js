@@ -1,5 +1,6 @@
 import express from "express";
-import { getDB } from "./db.js";
+import { SidechatAPIClient } from "sidechat.js";
+import { getDB, upsertPost, saveDB, disableFTSTriggers, rebuildFTS, DB_PATH } from "./db.js";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
@@ -7,11 +8,61 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const SCRAPE_INTERVAL_MINS = parseInt(process.env.SCRAPE_INTERVAL_MINS || "15", 10);
 
 let db;
 
+async function autoScrape() {
+  const token = process.env.SIDECHAT_TOKEN;
+  const groupId = process.env.SIDECHAT_GROUP_ID;
+  if (!token || !groupId) return;
+
+  const delayMs = parseInt(process.env.SIDECHAT_DELAY_MS || "0", 10);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  try {
+    const api = new SidechatAPIClient(token);
+    disableFTSTriggers(db);
+
+    let cursor = null;
+    let total = 0;
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    for (let page = 0; page < 200; page++) {
+      const res = await api.getGroupPosts(groupId, "recent", cursor);
+      const posts = (res.posts || []).filter((p) => p.id);
+      if (!posts.length) break;
+
+      let hitCutoff = false;
+      for (const post of posts) {
+        if (new Date(post.created_at) < cutoff) { hitCutoff = true; continue; }
+        upsertPost(db, post);
+        total++;
+      }
+      if (hitCutoff) break;
+
+      cursor = res.cursor;
+      if (!cursor) break;
+      if (delayMs > 0) await sleep(delayMs);
+    }
+
+    rebuildFTS(db);
+    saveDB(db);
+    console.log(`[auto-scrape] ${total} posts updated at ${new Date().toISOString()}`);
+  } catch (err) {
+    console.error("[auto-scrape] Error:", err.message);
+  }
+}
+
 async function init() {
   db = await getDB();
+  console.log(`Database: ${DB_PATH}`);
+
+  if (process.env.SIDECHAT_TOKEN && process.env.SIDECHAT_GROUP_ID) {
+    console.log(`Auto-scrape enabled: every ${SCRAPE_INTERVAL_MINS} minutes`);
+    autoScrape();
+    setInterval(autoScrape, SCRAPE_INTERVAL_MINS * 60 * 1000);
+  }
 }
 
 app.use(express.static(join(__dirname, "public")));
@@ -131,7 +182,7 @@ app.get("/api/stats", (_req, res) => {
 });
 
 init().then(() => {
-  app.listen(PORT, () => {
-    console.log(`Server running at http://localhost:${PORT}`);
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on port ${PORT}`);
   });
 });

@@ -1,7 +1,9 @@
 import initSqlJs from "sql.js";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 
-const DB_PATH = "posts.db";
+const DATA_DIR = existsSync("/data") ? "/data" : ".";
+const DB_PATH = process.env.DB_PATH || `${DATA_DIR}/posts.db`;
+export { DB_PATH };
 
 let SQL;
 
