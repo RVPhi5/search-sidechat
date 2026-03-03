@@ -12,13 +12,34 @@ const SCRAPE_INTERVAL_MINS = parseInt(process.env.SCRAPE_INTERVAL_MINS || "15", 
 
 let db;
 
+let isBackfilling = false;
+
+function getPostCount() {
+  try {
+    const r = db.exec("SELECT COUNT(*) FROM posts");
+    return r[0]?.values[0]?.[0] || 0;
+  } catch { return 0; }
+}
+
 async function autoScrape() {
+  if (isBackfilling) return;
+
   const token = process.env.SIDECHAT_TOKEN;
   const groupId = process.env.SIDECHAT_GROUP_ID;
   if (!token || !groupId) return;
 
   const delayMs = parseInt(process.env.SIDECHAT_DELAY_MS || "0", 10);
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const postCount = getPostCount();
+  const fullScrape = postCount < 50000;
+
+  if (fullScrape) {
+    isBackfilling = true;
+    console.log(`[auto-scrape] Backfill mode: only ${postCount} posts in DB, scraping all history...`);
+  }
+
+  const maxPages = fullScrape ? 10000 : 200;
+  const cutoff = fullScrape ? null : new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   try {
     const api = new SidechatAPIClient(token);
@@ -26,20 +47,24 @@ async function autoScrape() {
 
     let cursor = null;
     let total = 0;
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    for (let page = 0; page < 200; page++) {
+    for (let page = 0; page < maxPages; page++) {
       const res = await api.getGroupPosts(groupId, "recent", cursor);
       const posts = (res.posts || []).filter((p) => p.id);
       if (!posts.length) break;
 
       let hitCutoff = false;
       for (const post of posts) {
-        if (new Date(post.created_at) < cutoff) { hitCutoff = true; continue; }
+        if (cutoff && new Date(post.created_at) < cutoff) { hitCutoff = true; continue; }
         upsertPost(db, post);
         total++;
       }
       if (hitCutoff) break;
+
+      if (page % 100 === 0 && page > 0) {
+        saveDB(db);
+        console.log(`[auto-scrape] Progress: page ${page}, ${total} posts so far...`);
+      }
 
       cursor = res.cursor;
       if (!cursor) break;
@@ -48,9 +73,11 @@ async function autoScrape() {
 
     rebuildFTS(db);
     saveDB(db);
-    console.log(`[auto-scrape] ${total} posts updated at ${new Date().toISOString()}`);
+    console.log(`[auto-scrape] ${total} posts updated at ${new Date().toISOString()} (total in DB: ${getPostCount()})`);
   } catch (err) {
     console.error("[auto-scrape] Error:", err.message);
+  } finally {
+    isBackfilling = false;
   }
 }
 
