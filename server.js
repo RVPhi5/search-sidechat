@@ -9,10 +9,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SCRAPE_INTERVAL_MINS = parseInt(process.env.SCRAPE_INTERVAL_MINS || "15", 10);
+const POST_REFRESH_HOURS = parseInt(process.env.POST_REFRESH_HOURS || "24", 10);
 
 let db;
 
 let isBackfilling = false;
+let lastPostRefreshAt = 0;
 
 function getPostCount() {
   try {
@@ -33,13 +35,20 @@ async function autoScrape() {
   const postCount = getPostCount();
   const fullScrape = postCount < 50000;
 
+  if (!fullScrape) {
+    const sinceRefresh = Date.now() - lastPostRefreshAt;
+    if (sinceRefresh < POST_REFRESH_HOURS * 60 * 60 * 1000) return;
+  }
+
   if (fullScrape) {
     isBackfilling = true;
     console.log(`[auto-scrape] Backfill mode: only ${postCount} posts in DB, scraping all history...`);
+  } else {
+    console.log(`[auto-scrape] Refresh mode: updating last ${POST_REFRESH_HOURS}h of posts (votes + comments)...`);
   }
 
   const maxPages = fullScrape ? 10000 : 200;
-  const cutoff = fullScrape ? null : new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const cutoff = fullScrape ? null : new Date(Date.now() - POST_REFRESH_HOURS * 60 * 60 * 1000);
 
   try {
     const api = new SidechatAPIClient(token);
@@ -82,6 +91,7 @@ async function autoScrape() {
 
     rebuildFTS(db);
     saveDB(db);
+    if (!fullScrape) lastPostRefreshAt = Date.now();
     const commentCount = (() => { try { const r = db.exec("SELECT COUNT(*) FROM comments"); return r[0]?.values[0]?.[0] || 0; } catch { return 0; } })();
     console.log(`[auto-scrape] ${total} posts updated at ${new Date().toISOString()} (total in DB: ${getPostCount()} posts, ${commentCount} comments)`);
   } catch (err) {
@@ -466,28 +476,25 @@ app.get("/api/charts", (_req, res) => {
        FROM posts GROUP BY strftime('%w', created_at) ORDER BY dow ASC`
     );
     const topPosters = queryAll(
-      `SELECT COALESCE(identity_name, alias, 'Anonymous') as name, COUNT(*) as count
-       FROM posts WHERE identity_name IS NOT NULL OR alias IS NOT NULL
-       GROUP BY name ORDER BY count DESC LIMIT 15`
+      `SELECT COALESCE(NULLIF(identity_name,''), NULLIF(alias,''), 'Anonymous') as name, COUNT(*) as count
+       FROM posts
+       GROUP BY name
+       HAVING name != 'Anonymous'
+       ORDER BY count DESC LIMIT 15`
     );
     const voteDistribution = queryAll(
-      `SELECT
-        CASE
-          WHEN vote_total < 0 THEN 'negative'
-          WHEN vote_total = 0 THEN '0'
-          WHEN vote_total BETWEEN 1 AND 10 THEN '1-10'
-          WHEN vote_total BETWEEN 11 AND 50 THEN '11-50'
-          WHEN vote_total BETWEEN 51 AND 100 THEN '51-100'
-          WHEN vote_total BETWEEN 101 AND 500 THEN '101-500'
-          ELSE '500+'
-        END as bucket,
-        COUNT(*) as count
-       FROM posts GROUP BY bucket`
+      `SELECT (vote_total / 10) * 10 as bucket_start, COUNT(*) as count
+       FROM posts WHERE vote_total >= 0 AND vote_total < 500
+       GROUP BY bucket_start ORDER BY bucket_start ASC`
     );
-    const bucketOrder = ['negative','0','1-10','11-50','51-100','101-500','500+'];
-    voteDistribution.sort((a,b) => bucketOrder.indexOf(a.bucket) - bucketOrder.indexOf(b.bucket));
+    const negativeVotes = queryOne(
+      `SELECT COUNT(*) as count FROM posts WHERE vote_total < 0`
+    );
+    const votes500Plus = queryOne(
+      `SELECT COUNT(*) as count FROM posts WHERE vote_total >= 500`
+    );
 
-    res.json({ postsPerDay, postsPerMonth, postsByHour, postsByDayOfWeek, topPosters, voteDistribution });
+    res.json({ postsPerDay, postsPerMonth, postsByHour, postsByDayOfWeek, topPosters, voteDistribution, negativeVotes: negativeVotes?.count || 0, votes500Plus: votes500Plus?.count || 0 });
   } catch (err) {
     console.error("Charts error:", err);
     res.status(500).json({ error: "Internal server error." });

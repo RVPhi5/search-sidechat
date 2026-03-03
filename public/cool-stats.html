@@ -158,15 +158,13 @@
               <div class="chart-wrap"><canvas id="dowChart"></canvas></div>
             </div>
           </div>
-          <div class="chart-row">
-            <div class="chart-card">
-              <h2>Vote Distribution</h2>
-              <div class="chart-wrap"><canvas id="voteChart"></canvas></div>
-            </div>
-            <div class="chart-card">
-              <h2>Top Posters</h2>
-              <div class="chart-wrap"><canvas id="posterChart"></canvas></div>
-            </div>
+          <div class="chart-card">
+            <h2>Vote Distribution</h2>
+            <div class="chart-wrap tall"><canvas id="voteChart"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <h2>Top Posters</h2>
+            <div class="chart-wrap"><canvas id="posterChart"></canvas></div>
           </div>
         </div>
       `;
@@ -253,21 +251,38 @@
         }
       });
 
+      const voteLabels = [
+        ...(c.negativeVotes > 0 ? ["< 0"] : []),
+        ...c.voteDistribution.map(d => `${d.bucket_start}`),
+        ...(c.votes500Plus > 0 ? ["500+"] : [])
+      ];
+      const voteData = [
+        ...(c.negativeVotes > 0 ? [c.negativeVotes] : []),
+        ...c.voteDistribution.map(d => d.count),
+        ...(c.votes500Plus > 0 ? [c.votes500Plus] : [])
+      ];
+      const voteColors = voteLabels.map(l => l === "< 0" ? "#e17055" : l === "500+" ? "#f59e0b" : pink);
+
       new Chart(document.getElementById("voteChart"), {
         type: "bar",
         data: {
-          labels: c.voteDistribution.map(d => d.bucket),
+          labels: voteLabels,
           datasets: [{
             label: "Posts",
-            data: c.voteDistribution.map(d => d.count),
-            backgroundColor: ["#e17055", "#636e72", "#74b9ff", "#a855f7", "#00b894", "#f59e0b", "#c4488f"],
-            borderRadius: 4,
+            data: voteData,
+            backgroundColor: voteColors,
+            borderRadius: 1,
+            barPercentage: 1.0,
+            categoryPercentage: 1.0,
           }]
         },
         options: {
           responsive: true, maintainAspectRatio: false,
           plugins: { legend: { display: false } },
-          scales: { y: { beginAtZero: true } }
+          scales: {
+            x: { title: { display: true, text: "Votes", color: "#888" }, ticks: { maxTicksLimit: 20 } },
+            y: { beginAtZero: true, title: { display: true, text: "Posts", color: "#888" } }
+          }
         }
       });
 
