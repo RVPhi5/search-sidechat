@@ -8,14 +8,14 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #0f0f0f;
+      --bg: #ff66cc;
       --surface: #1a1a1a;
       --surface-hover: #222;
       --border: #2a2a2a;
       --text: #e8e8e8;
       --text-dim: #888;
-      --accent: #6c5ce7;
-      --accent-soft: #6c5ce720;
+      --accent: #ff66cc;
+      --accent-soft: #ff66cc25;
       --green: #00b894;
       --red: #e17055;
       --radius: 10px;
@@ -44,6 +44,7 @@
       font-size: 1.6rem;
       font-weight: 700;
       letter-spacing: -0.02em;
+      color: #fff;
     }
 
     .stats-bar {
@@ -52,7 +53,7 @@
       justify-content: center;
       margin-top: 8px;
       font-size: 0.8rem;
-      color: var(--text-dim);
+      color: rgba(255,255,255,0.75);
     }
 
     .search-box {
@@ -95,7 +96,7 @@
       flex-wrap: wrap;
     }
 
-    .controls select {
+    .controls select, .controls input[type="month"], .controls input[type="date"] {
       padding: 6px 10px;
       background: var(--surface);
       border: 1px solid var(--border);
@@ -105,10 +106,29 @@
       cursor: pointer;
     }
 
+    .controls input[type="month"], .controls input[type="date"] {
+      color-scheme: dark;
+    }
+
+    .date-inputs {
+      display: none;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .date-inputs.visible {
+      display: flex;
+    }
+
+    .date-inputs label {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+    }
+
     .result-count {
       margin-left: auto;
       font-size: 0.82rem;
-      color: var(--text-dim);
+      color: rgba(255,255,255,0.75);
       align-self: center;
     }
 
@@ -164,6 +184,88 @@
 
     .vote-positive { color: var(--green); }
     .vote-negative { color: var(--red); }
+
+    .quoted-post {
+      margin-bottom: 10px;
+      padding: 10px 12px;
+      background: var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 4px;
+      font-size: 0.84rem;
+    }
+
+    .quoted-post .quoted-header {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-bottom: 4px;
+    }
+
+    .quoted-post .quoted-text {
+      color: var(--text-dim);
+      white-space: pre-wrap;
+      word-break: break-word;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .poll {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .poll-choice {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.85rem;
+    }
+
+    .poll-label {
+      min-width: 80px;
+      max-width: 120px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .poll-bar-track {
+      flex: 1;
+      height: 22px;
+      background: var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .poll-bar-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 4px;
+      min-width: 2px;
+    }
+
+    .poll-bar-fill.winner {
+      background: var(--green);
+    }
+
+    .poll-count {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      min-width: 70px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .poll-total {
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
 
     .post-media {
       margin-top: 8px;
@@ -256,6 +358,23 @@
           <option value="DESC">Descending</option>
           <option value="ASC">Ascending</option>
         </select>
+        <select id="timeRange">
+          <option value="">All time</option>
+          <option value="24h">Last 24 hours</option>
+          <option value="7d">Last 7 days</option>
+          <option value="30d">Last 30 days</option>
+          <option value="month">Pick month</option>
+          <option value="custom">Custom range</option>
+        </select>
+        <div class="date-inputs" id="monthPicker">
+          <input type="month" id="monthInput">
+        </div>
+        <div class="date-inputs" id="customRange">
+          <label>From</label>
+          <input type="date" id="dateFrom">
+          <label>To</label>
+          <input type="date" id="dateTo">
+        </div>
         <span class="result-count" id="resultCount"></span>
       </div>
     </div>
@@ -268,6 +387,12 @@
     const $query = document.getElementById("query");
     const $sort = document.getElementById("sort");
     const $order = document.getElementById("order");
+    const $timeRange = document.getElementById("timeRange");
+    const $monthPicker = document.getElementById("monthPicker");
+    const $monthInput = document.getElementById("monthInput");
+    const $customRange = document.getElementById("customRange");
+    const $dateFrom = document.getElementById("dateFrom");
+    const $dateTo = document.getElementById("dateTo");
     const $posts = document.getElementById("posts");
     const $pagination = document.getElementById("pagination");
     const $resultCount = document.getElementById("resultCount");
@@ -275,6 +400,40 @@
 
     let currentPage = 1;
     let debounceTimer;
+
+    function getDateRange() {
+      const range = $timeRange.value;
+      if (!range) return {};
+      if (range === "24h") return { after: new Date(Date.now() - 86400000).toISOString() };
+      if (range === "7d") return { after: new Date(Date.now() - 7 * 86400000).toISOString() };
+      if (range === "30d") return { after: new Date(Date.now() - 30 * 86400000).toISOString() };
+      if (range === "month" && $monthInput.value) {
+        const [y, m] = $monthInput.value.split("-").map(Number);
+        const after = new Date(y, m - 1, 1).toISOString();
+        const before = new Date(y, m, 1).toISOString();
+        return { after, before };
+      }
+      if (range === "custom") {
+        const result = {};
+        if ($dateFrom.value) result.after = new Date($dateFrom.value).toISOString();
+        if ($dateTo.value) {
+          const to = new Date($dateTo.value);
+          to.setDate(to.getDate() + 1);
+          result.before = to.toISOString();
+        }
+        return result;
+      }
+      return {};
+    }
+
+    $timeRange.addEventListener("change", () => {
+      $monthPicker.classList.toggle("visible", $timeRange.value === "month");
+      $customRange.classList.toggle("visible", $timeRange.value === "custom");
+      if ($timeRange.value !== "month" && $timeRange.value !== "custom") search(1);
+    });
+    $monthInput.addEventListener("change", () => search(1));
+    $dateFrom.addEventListener("change", () => search(1));
+    $dateTo.addEventListener("change", () => search(1));
 
     async function loadStats() {
       try {
@@ -304,6 +463,9 @@
       if (q) params.set("q", q);
       if (sort) params.set("sort", sort);
       params.set("order", order);
+      const dateRange = getDateRange();
+      if (dateRange.after) params.set("after", dateRange.after);
+      if (dateRange.before) params.set("before", dateRange.before);
 
       $posts.innerHTML = '<div class="loading">Searching...</div>';
 
@@ -365,6 +527,36 @@
         const assets = JSON.parse(p.assets || "[]");
         const voteClass = p.vote_total > 0 ? "vote-positive" : p.vote_total < 0 ? "vote-negative" : "";
 
+        let quoteHTML = "";
+        if (p.quoted_post) {
+          const qp = p.quoted_post;
+          const qName = escapeHTML(qp.identity_name || qp.alias || "Anonymous");
+          quoteHTML = `<div class="quoted-post">
+            <div class="quoted-header">\u21A9 Replying to ${qName}</div>
+            <div class="quoted-text">${escapeHTML(qp.text || "")}</div>
+          </div>`;
+        }
+
+        let pollHTML = "";
+        if (p.has_poll && p.poll_data) {
+          try {
+            const poll = JSON.parse(p.poll_data);
+            const totalVotes = poll.choices.reduce((s, c) => s + c.count, 0);
+            const maxCount = Math.max(...poll.choices.map(c => c.count));
+            pollHTML = `<div class="poll">` +
+              poll.choices.map(c => {
+                const pct = totalVotes ? Math.round(c.count / totalVotes * 100) : 0;
+                const isWinner = c.count === maxCount && totalVotes > 0;
+                return `<div class="poll-choice">
+                  <span class="poll-label" title="${escapeHTML(c.text)}">${escapeHTML(c.text)}</span>
+                  <div class="poll-bar-track"><div class="poll-bar-fill${isWinner ? " winner" : ""}" style="width:${pct}%"></div></div>
+                  <span class="poll-count">${c.count} (${pct}%)</span>
+                </div>`;
+              }).join("") +
+              `<div class="poll-total">${totalVotes} votes</div></div>`;
+          } catch {}
+        }
+
         const mediaEls = assets.map(a => {
           const proxied = `/api/asset?url=${encodeURIComponent(a.url)}`;
           if (a.type === "video") return `<video src="${proxied}" controls preload="none"></video>`;
@@ -379,7 +571,9 @@
               <span>\u00B7</span>
               <span>${timeAgo(p.created_at)}</span>
             </div>
+            ${quoteHTML}
             <div class="post-text">${highlightText(p.text, query)}</div>
+            ${pollHTML}
             ${mediaEls.length ? `<div class="post-media">${mediaEls.join("")}</div>` : ""}
             <div class="post-footer">
               <span class="${voteClass}">\u25B2 ${p.vote_total}</span>

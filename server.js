@@ -81,10 +81,28 @@ function queryOne(sql, params = []) {
   return rows[0] || null;
 }
 
+function attachQuotedPosts(posts) {
+  const quoteIds = posts.filter(p => p.quote_post_id).map(p => p.quote_post_id);
+  if (!quoteIds.length) return posts;
+  const placeholders = quoteIds.map(() => "?").join(",");
+  const quoted = queryAll(
+    `SELECT id, text, alias, identity_name, identity_emoji, vote_total, created_at FROM posts WHERE id IN (${placeholders})`,
+    quoteIds
+  );
+  const map = Object.fromEntries(quoted.map(q => [q.id, q]));
+  return posts.map(p => p.quote_post_id ? { ...p, quoted_post: map[p.quote_post_id] || null } : p);
+}
+
 app.get("/api/search", (req, res) => {
-  const { q, sort, order, page } = req.query;
+  const { q, sort, order, page, after, before } = req.query;
   const limit = 50;
   const offset = ((parseInt(page, 10) || 1) - 1) * limit;
+
+  const dateFilters = [];
+  const dateParams = [];
+  if (after) { dateFilters.push("created_at >= ?"); dateParams.push(after); }
+  if (before) { dateFilters.push("created_at < ?"); dateParams.push(before); }
+  const dateWhere = dateFilters.length ? dateFilters.join(" AND ") : "";
 
   try {
     if (!q || q.trim() === "") {
@@ -92,12 +110,13 @@ app.get("/api/search", (req, res) => {
         ? sort
         : "created_at";
       const sortDir = order === "ASC" ? "ASC" : "DESC";
+      const where = dateWhere ? `WHERE ${dateWhere}` : "";
 
-      const total = queryOne("SELECT COUNT(*) as n FROM posts")?.n || 0;
-      const posts = queryAll(
-        `SELECT * FROM posts ORDER BY ${sortCol} ${sortDir} LIMIT ? OFFSET ?`,
-        [limit, offset]
-      );
+      const total = queryOne(`SELECT COUNT(*) as n FROM posts ${where}`, dateParams)?.n || 0;
+      const posts = attachQuotedPosts(queryAll(
+        `SELECT * FROM posts ${where} ORDER BY ${sortCol} ${sortDir} LIMIT ? OFFSET ?`,
+        [...dateParams, limit, offset]
+      ));
 
       return res.json({
         posts,
@@ -110,22 +129,23 @@ app.get("/api/search", (req, res) => {
     const useRelevance = !["vote_total", "created_at", "comment_count"].includes(sort);
     const sortCol = useRelevance ? "p.created_at" : `p.${sort}`;
     const sortDir = useRelevance ? "DESC" : (order === "ASC" ? "ASC" : "DESC");
+    const extraWhere = dateWhere ? `AND ${dateWhere.replace(/created_at/g, "p.created_at")}` : "";
 
     const countResult = db.exec(
-      `SELECT COUNT(*) as n FROM posts_fts WHERE posts_fts MATCH ?`,
-      [q]
+      `SELECT COUNT(*) as n FROM posts_fts fts JOIN posts p ON p.id = fts.id WHERE posts_fts MATCH ? ${extraWhere}`,
+      [q, ...dateParams]
     );
     const total = countResult.length ? countResult[0].values[0][0] : 0;
 
-    const posts = queryAll(
+    const posts = attachQuotedPosts(queryAll(
       `SELECT p.*
        FROM posts_fts fts
        JOIN posts p ON p.id = fts.id
-       WHERE posts_fts MATCH ?
+       WHERE posts_fts MATCH ? ${extraWhere}
        ORDER BY ${sortCol} ${sortDir}
        LIMIT ? OFFSET ?`,
-      [q, limit, offset]
-    );
+      [q, ...dateParams, limit, offset]
+    ));
 
     res.json({
       posts,
@@ -160,6 +180,25 @@ app.get("/api/asset", async (req, res) => {
     res.send(buffer);
   } catch {
     res.status(502).json({ error: "Failed to fetch asset" });
+  }
+});
+
+app.post("/api/upload-db", async (req, res) => {
+  const secret = process.env.UPLOAD_SECRET;
+  if (!secret || req.headers["x-upload-secret"] !== secret) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+  try {
+    const { writeFileSync } = await import("fs");
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const buf = Buffer.concat(chunks);
+    writeFileSync(DB_PATH, buf);
+    db = await getDB();
+    res.json({ ok: true, size: buf.length });
+  } catch (err) {
+    console.error("Upload error:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
