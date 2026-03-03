@@ -254,18 +254,20 @@
       });
 
       new Chart(document.getElementById("voteChart"), {
-        type: "doughnut",
+        type: "bar",
         data: {
           labels: c.voteDistribution.map(d => d.bucket),
           datasets: [{
+            label: "Posts",
             data: c.voteDistribution.map(d => d.count),
             backgroundColor: ["#e17055", "#636e72", "#74b9ff", "#a855f7", "#00b894", "#f59e0b", "#c4488f"],
-            borderWidth: 0,
+            borderRadius: 4,
           }]
         },
         options: {
           responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { position: "right", labels: { boxWidth: 12, padding: 8, font: { size: 11 } } } }
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true } }
         }
       });
 

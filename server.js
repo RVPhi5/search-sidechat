@@ -467,7 +467,8 @@ app.get("/api/charts", (_req, res) => {
     );
     const topPosters = queryAll(
       `SELECT COALESCE(identity_name, alias, 'Anonymous') as name, COUNT(*) as count
-       FROM posts GROUP BY name ORDER BY count DESC LIMIT 15`
+       FROM posts WHERE identity_name IS NOT NULL OR alias IS NOT NULL
+       GROUP BY name ORDER BY count DESC LIMIT 15`
     );
     const voteDistribution = queryAll(
       `SELECT
