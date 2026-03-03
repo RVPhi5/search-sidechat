@@ -1,6 +1,6 @@
 import express from "express";
 import { SidechatAPIClient } from "sidechat.js";
-import { getDB, upsertPost, upsertComment, markCommentsScraped, saveDB, disableFTSTriggers, rebuildFTS, DB_PATH } from "./db.js";
+import { getDB, upsertPost, upsertComment, markCommentsScraped, saveDB, disableFTSTriggers, rebuildFTS, logUsage, DB_PATH } from "./db.js";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
@@ -222,7 +222,26 @@ async function init() {
   }
 }
 
+let usageSaveTimer = null;
+function trackUsage(event, query, ip) {
+  try {
+    logUsage(db, event, query, ip);
+    if (!usageSaveTimer) {
+      usageSaveTimer = setTimeout(() => { saveDB(db); usageSaveTimer = null; }, 30000);
+    }
+  } catch {}
+}
+
+function getClientIP(req) {
+  return req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip;
+}
+
 app.use(express.static(join(__dirname, "public")));
+
+app.get("/", (req, res, next) => {
+  trackUsage("visit", null, getClientIP(req));
+  next();
+});
 
 function queryAll(sql, params = []) {
   const result = db.exec(sql, params);
@@ -252,6 +271,7 @@ function attachQuotedPosts(posts) {
 
 app.get("/api/search", (req, res) => {
   const { q, sort, order, page, after, before } = req.query;
+  if (q && q.trim()) trackUsage("search", q.trim(), getClientIP(req));
   const limit = 50;
   const offset = ((parseInt(page, 10) || 1) - 1) * limit;
 
@@ -380,6 +400,50 @@ app.post("/api/upload-db", async (req, res) => {
   } catch (err) {
     console.error("Upload error:", err);
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/usage", (_req, res) => {
+  try {
+    const today = queryOne(
+      `SELECT COUNT(*) as visits FROM usage_log WHERE event='visit' AND created_at >= date('now')`
+    );
+    const todaySearches = queryOne(
+      `SELECT COUNT(*) as searches FROM usage_log WHERE event='search' AND created_at >= date('now')`
+    );
+    const total = queryOne(
+      `SELECT
+        (SELECT COUNT(*) FROM usage_log WHERE event='visit') as total_visits,
+        (SELECT COUNT(*) FROM usage_log WHERE event='search') as total_searches,
+        (SELECT COUNT(DISTINCT ip) FROM usage_log WHERE event='visit') as unique_visitors,
+        (SELECT COUNT(DISTINCT ip) FROM usage_log WHERE event='visit' AND created_at >= date('now')) as unique_today`
+    );
+    const topSearches = queryAll(
+      `SELECT query, COUNT(*) as count FROM usage_log WHERE event='search' AND query IS NOT NULL
+       GROUP BY query ORDER BY count DESC LIMIT 20`
+    );
+    const dailyVisits = queryAll(
+      `SELECT date(created_at) as day, COUNT(*) as visits,
+       COUNT(DISTINCT ip) as unique_visitors
+       FROM usage_log WHERE event='visit'
+       GROUP BY date(created_at) ORDER BY day DESC LIMIT 30`
+    );
+    const dailySearches = queryAll(
+      `SELECT date(created_at) as day, COUNT(*) as searches
+       FROM usage_log WHERE event='search'
+       GROUP BY date(created_at) ORDER BY day DESC LIMIT 30`
+    );
+
+    res.json({
+      today: { visits: today?.visits || 0, searches: todaySearches?.searches || 0, unique_visitors: total?.unique_today || 0 },
+      all_time: { visits: total?.total_visits || 0, searches: total?.total_searches || 0, unique_visitors: total?.unique_visitors || 0 },
+      top_searches: topSearches,
+      daily_visits: dailyVisits,
+      daily_searches: dailySearches,
+    });
+  } catch (err) {
+    console.error("Usage error:", err);
+    res.status(500).json({ error: "Internal server error." });
   }
 });
 

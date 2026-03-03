@@ -46,6 +46,17 @@ function migrateSchema(db) {
     )
   `);
   db.run(`CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id)`);
+  db.run(`
+    CREATE TABLE IF NOT EXISTS usage_log (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      event      TEXT NOT NULL,
+      query      TEXT,
+      ip         TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_usage_created ON usage_log(created_at)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_usage_event ON usage_log(event)`);
 }
 
 export function saveDB(db) {
@@ -245,4 +256,11 @@ export function upsertComment(db, comment, postId) {
 
 export function markCommentsScraped(db, postId) {
   db.run(`UPDATE posts SET comments_scraped_at = datetime('now') WHERE id = ?`, [postId]);
+}
+
+export function logUsage(db, event, query, ip) {
+  db.run(
+    `INSERT INTO usage_log (event, query, ip) VALUES (?, ?, ?)`,
+    [event, query || null, ip || null]
+  );
 }

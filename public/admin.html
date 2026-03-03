@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - Sidechat Search</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #111;
+      color: #e8e8e8;
+      line-height: 1.5;
+      padding: 24px;
+    }
+
+    .container { max-width: 900px; margin: 0 auto; }
+
+    h1 { font-size: 1.4rem; margin-bottom: 24px; color: #fff; }
+    h2 { font-size: 1.1rem; margin: 24px 0 12px; color: #ccc; border-bottom: 1px solid #333; padding-bottom: 6px; }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+
+    .card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 10px;
+      padding: 16px;
+    }
+
+    .card .label { font-size: 0.78rem; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }
+    .card .value { font-size: 1.8rem; font-weight: 700; color: #fff; margin-top: 4px; }
+    .card .sub { font-size: 0.8rem; color: #666; margin-top: 2px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.88rem;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 8px 12px;
+      border-bottom: 1px solid #222;
+    }
+
+    th { color: #888; font-weight: 600; font-size: 0.78rem; text-transform: uppercase; }
+    td { color: #ccc; }
+
+    .bar-cell { width: 40%; }
+    .bar {
+      height: 18px;
+      background: #c4488f;
+      border-radius: 3px;
+      min-width: 2px;
+    }
+
+    a { color: #c4488f; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .back { margin-bottom: 16px; display: inline-block; }
+    .loading { color: #888; padding: 40px; text-align: center; }
+    .refresh-btn {
+      padding: 6px 14px;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 6px;
+      color: #e8e8e8;
+      cursor: pointer;
+      font-size: 0.82rem;
+      float: right;
+    }
+    .refresh-btn:hover { background: #222; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/" class="back">&larr; Back to search</a>
+    <button class="refresh-btn" onclick="load()">Refresh</button>
+    <h1>Usage Dashboard</h1>
+    <div id="content"><div class="loading">Loading...</div></div>
+  </div>
+
+  <script>
+    const $content = document.getElementById("content");
+
+    async function load() {
+      try {
+        const [usage, stats] = await Promise.all([
+          fetch("/api/usage").then(r => r.json()),
+          fetch("/api/stats").then(r => r.json()),
+        ]);
+        render(usage, stats);
+      } catch (err) {
+        $content.innerHTML = `<div class="loading">Failed to load: ${err.message}</div>`;
+      }
+    }
+
+    function render(u, s) {
+      const todayCards = `
+        <div class="cards">
+          <div class="card">
+            <div class="label">Visits Today</div>
+            <div class="value">${u.today.visits.toLocaleString()}</div>
+            <div class="sub">${u.today.unique_visitors} unique</div>
+          </div>
+          <div class="card">
+            <div class="label">Searches Today</div>
+            <div class="value">${u.today.searches.toLocaleString()}</div>
+          </div>
+          <div class="card">
+            <div class="label">All-Time Visits</div>
+            <div class="value">${u.all_time.visits.toLocaleString()}</div>
+            <div class="sub">${u.all_time.unique_visitors} unique</div>
+          </div>
+          <div class="card">
+            <div class="label">All-Time Searches</div>
+            <div class="value">${u.all_time.searches.toLocaleString()}</div>
+          </div>
+          <div class="card">
+            <div class="label">Total Posts</div>
+            <div class="value">${(s.total_posts || 0).toLocaleString()}</div>
+          </div>
+          <div class="card">
+            <div class="label">Total Comments</div>
+            <div class="value">${(s.total_comments || 0).toLocaleString()}</div>
+          </div>
+        </div>`;
+
+      const maxSearch = Math.max(...u.top_searches.map(s => s.count), 1);
+      const searchRows = u.top_searches.map(s => `
+        <tr>
+          <td>${escapeHTML(s.query)}</td>
+          <td>${s.count}</td>
+          <td class="bar-cell"><div class="bar" style="width:${Math.round(s.count / maxSearch * 100)}%"></div></td>
+        </tr>
+      `).join("");
+
+      const maxVisit = Math.max(...u.daily_visits.map(d => d.visits), 1);
+      const dailyRows = u.daily_visits.map(d => {
+        const searches = u.daily_searches.find(s => s.day === d.day)?.searches || 0;
+        return `
+          <tr>
+            <td>${d.day}</td>
+            <td>${d.visits}</td>
+            <td>${d.unique_visitors}</td>
+            <td>${searches}</td>
+            <td class="bar-cell"><div class="bar" style="width:${Math.round(d.visits / maxVisit * 100)}%"></div></td>
+          </tr>`;
+      }).join("");
+
+      $content.innerHTML = `
+        ${todayCards}
+        <h2>Daily Activity (last 30 days)</h2>
+        <table>
+          <tr><th>Date</th><th>Visits</th><th>Unique</th><th>Searches</th><th></th></tr>
+          ${dailyRows || "<tr><td colspan='5' style='color:#666'>No data yet</td></tr>"}
+        </table>
+        <h2>Top Searches</h2>
+        <table>
+          <tr><th>Query</th><th>Count</th><th></th></tr>
+          ${searchRows || "<tr><td colspan='3' style='color:#666'>No searches yet</td></tr>"}
+        </table>
+      `;
+    }
+
+    function escapeHTML(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    load();
+  </script>
+</body>
+</html>
