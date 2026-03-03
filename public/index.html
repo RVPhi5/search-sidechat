@@ -8,7 +8,7 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg: #d94fad;
+      --bg: #c4488f;
       --surface: #1a1a1a;
       --surface-hover: #222;
       --border: #2a2a2a;
@@ -311,6 +311,112 @@
       color: var(--text-dim);
     }
 
+    .post.clickable {
+      cursor: pointer;
+    }
+
+    .detail-view {
+      display: none;
+    }
+
+    .detail-view.active {
+      display: block;
+    }
+
+    .search-view.hidden {
+      display: none;
+    }
+
+    .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      cursor: pointer;
+      font-size: 0.85rem;
+      margin-bottom: 16px;
+    }
+
+    .back-btn:hover {
+      background: var(--surface-hover);
+    }
+
+    .comments-section {
+      margin-top: 20px;
+    }
+
+    .comments-section h3 {
+      font-size: 0.95rem;
+      color: var(--text);
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .comment {
+      padding: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 6px;
+    }
+
+    .comment.reply {
+      margin-left: 24px;
+      border-left: 2px solid var(--accent);
+    }
+
+    .comment-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+
+    .comment-header .post-alias {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .comment-text {
+      font-size: 0.9rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .comment-footer {
+      display: flex;
+      gap: 12px;
+      margin-top: 6px;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+    }
+
+    .comment-media {
+      margin-top: 6px;
+    }
+
+    .comment-media img, .comment-media video {
+      max-width: 100%;
+      max-height: 300px;
+      border-radius: 6px;
+      object-fit: contain;
+      background: #000;
+    }
+
+    .no-comments {
+      text-align: center;
+      padding: 24px;
+      color: var(--text-dim);
+      font-size: 0.88rem;
+    }
+
     .empty {
       text-align: center;
       padding: 60px 20px;
@@ -338,49 +444,56 @@
 </head>
 <body>
   <div class="container">
-    <header>
-      <h1>Sidechat Search</h1>
-      <div class="stats-bar" id="stats"></div>
-    </header>
+    <div id="searchView" class="search-view">
+      <header>
+        <h1>Sidechat Search</h1>
+        <div class="stats-bar" id="stats"></div>
+      </header>
 
-    <div class="search-box">
-      <div class="search-row">
-        <input type="text" id="query" placeholder="Search posts..." autofocus>
-      </div>
-      <div class="controls">
-        <select id="sort">
-          <option value="">Relevance</option>
-          <option value="created_at">Date</option>
-          <option value="vote_total">Votes</option>
-          <option value="comment_count">Comments</option>
-        </select>
-        <select id="order">
-          <option value="DESC">Descending</option>
-          <option value="ASC">Ascending</option>
-        </select>
-        <select id="timeRange">
-          <option value="">All time</option>
-          <option value="24h">Last 24 hours</option>
-          <option value="7d">Last 7 days</option>
-          <option value="30d">Last 30 days</option>
-          <option value="month">Pick month</option>
-          <option value="custom">Custom range</option>
-        </select>
-        <div class="date-inputs" id="monthPicker">
-          <input type="month" id="monthInput">
+      <div class="search-box">
+        <div class="search-row">
+          <input type="text" id="query" placeholder="Search posts..." autofocus>
         </div>
-        <div class="date-inputs" id="customRange">
-          <label>From</label>
-          <input type="date" id="dateFrom">
-          <label>To</label>
-          <input type="date" id="dateTo">
+        <div class="controls">
+          <select id="sort">
+            <option value="">Relevance</option>
+            <option value="created_at">Date</option>
+            <option value="vote_total">Votes</option>
+            <option value="comment_count">Comments</option>
+          </select>
+          <select id="order">
+            <option value="DESC">Descending</option>
+            <option value="ASC">Ascending</option>
+          </select>
+          <select id="timeRange">
+            <option value="">All time</option>
+            <option value="24h">Last 24 hours</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+            <option value="month">Pick month</option>
+            <option value="custom">Custom range</option>
+          </select>
+          <div class="date-inputs" id="monthPicker">
+            <input type="month" id="monthInput">
+          </div>
+          <div class="date-inputs" id="customRange">
+            <label>From</label>
+            <input type="date" id="dateFrom">
+            <label>To</label>
+            <input type="date" id="dateTo">
+          </div>
+          <span class="result-count" id="resultCount"></span>
         </div>
-        <span class="result-count" id="resultCount"></span>
       </div>
+
+      <div id="posts" class="posts"></div>
+      <div id="pagination" class="pagination"></div>
     </div>
 
-    <div id="posts" class="posts"></div>
-    <div id="pagination" class="pagination"></div>
+    <div id="detailView" class="detail-view">
+      <button class="back-btn" id="backBtn">&larr; Back to results</button>
+      <div id="detailContent"></div>
+    </div>
   </div>
 
   <script>
@@ -397,9 +510,36 @@
     const $pagination = document.getElementById("pagination");
     const $resultCount = document.getElementById("resultCount");
     const $stats = document.getElementById("stats");
+    const $searchView = document.getElementById("searchView");
+    const $detailView = document.getElementById("detailView");
+    const $detailContent = document.getElementById("detailContent");
+    const $backBtn = document.getElementById("backBtn");
 
     let currentPage = 1;
     let debounceTimer;
+
+    function showSearchView() {
+      $searchView.classList.remove("hidden");
+      $detailView.classList.remove("active");
+    }
+
+    function showDetailView() {
+      $searchView.classList.add("hidden");
+      $detailView.classList.add("active");
+      window.scrollTo(0, 0);
+    }
+
+    $backBtn.addEventListener("click", () => {
+      history.back();
+    });
+
+    window.addEventListener("popstate", (e) => {
+      if (e.state?.postId) {
+        loadPostDetail(e.state.postId, false);
+      } else {
+        showSearchView();
+      }
+    });
 
     function getDateRange() {
       const range = $timeRange.value;
@@ -517,72 +657,85 @@
       return `${months}mo ago`;
     }
 
+    function renderPostCard(p, query, clickable = true) {
+      const assets = JSON.parse(p.assets || "[]");
+      const voteClass = p.vote_total > 0 ? "vote-positive" : p.vote_total < 0 ? "vote-negative" : "";
+
+      let quoteHTML = "";
+      if (p.quoted_post) {
+        const qp = p.quoted_post;
+        const qName = escapeHTML(qp.identity_name || qp.alias || "Anonymous");
+        quoteHTML = `<div class="quoted-post">
+          <div class="quoted-header">\u21A9 Replying to ${qName}</div>
+          <div class="quoted-text">${escapeHTML(qp.text || "")}</div>
+        </div>`;
+      }
+
+      let pollHTML = "";
+      if (p.has_poll && p.poll_data) {
+        try {
+          const poll = JSON.parse(p.poll_data);
+          const totalVotes = poll.choices.reduce((s, c) => s + c.count, 0);
+          const maxCount = Math.max(...poll.choices.map(c => c.count));
+          pollHTML = `<div class="poll">` +
+            poll.choices.map(c => {
+              const pct = totalVotes ? Math.round(c.count / totalVotes * 100) : 0;
+              const isWinner = c.count === maxCount && totalVotes > 0;
+              return `<div class="poll-choice">
+                <span class="poll-label" title="${escapeHTML(c.text)}">${escapeHTML(c.text)}</span>
+                <div class="poll-bar-track"><div class="poll-bar-fill${isWinner ? " winner" : ""}" style="width:${pct}%"></div></div>
+                <span class="poll-count">${c.count} (${pct}%)</span>
+              </div>`;
+            }).join("") +
+            `<div class="poll-total">${totalVotes} votes</div></div>`;
+        } catch {}
+      }
+
+      const mediaEls = assets.map(a => {
+        const proxied = `/api/asset?url=${encodeURIComponent(a.url)}`;
+        if (a.type === "video") return `<video src="${proxied}" controls preload="none"></video>`;
+        return `<img src="${proxied}" loading="lazy" alt="Post image">`;
+      });
+
+      const highlightFn = query ? (t) => highlightText(t, query) : escapeHTML;
+
+      return `
+        <div class="post${clickable ? " clickable" : ""}" ${clickable ? `data-post-id="${p.id}"` : ""}>
+          <div class="post-header">
+            ${p.identity_emoji ? `<span class="post-emoji">${p.identity_emoji}</span>` : ""}
+            <span class="post-alias">${escapeHTML(p.identity_name || p.alias || "Anonymous")}</span>
+            <span>\u00B7</span>
+            <span>${timeAgo(p.created_at)}</span>
+          </div>
+          ${quoteHTML}
+          <div class="post-text">${highlightFn(p.text)}</div>
+          ${pollHTML}
+          ${mediaEls.length ? `<div class="post-media">${mediaEls.join("")}</div>` : ""}
+          <div class="post-footer">
+            <span class="${voteClass}">\u25B2 ${p.vote_total}</span>
+            <span>\uD83D\uDCAC ${p.comment_count}</span>
+            <span>${new Date(p.created_at).toLocaleString()}</span>
+          </div>
+        </div>
+      `;
+    }
+
     function renderPosts(posts, query) {
       if (!posts.length) {
         $posts.innerHTML = '<div class="empty"><p>No posts found</p><p>Try a different search term</p></div>';
         return;
       }
 
-      $posts.innerHTML = posts.map(p => {
-        const assets = JSON.parse(p.assets || "[]");
-        const voteClass = p.vote_total > 0 ? "vote-positive" : p.vote_total < 0 ? "vote-negative" : "";
+      $posts.innerHTML = posts.map(p => renderPostCard(p, query, true)).join("");
 
-        let quoteHTML = "";
-        if (p.quoted_post) {
-          const qp = p.quoted_post;
-          const qName = escapeHTML(qp.identity_name || qp.alias || "Anonymous");
-          quoteHTML = `<div class="quoted-post">
-            <div class="quoted-header">\u21A9 Replying to ${qName}</div>
-            <div class="quoted-text">${escapeHTML(qp.text || "")}</div>
-          </div>`;
-        }
-
-        let pollHTML = "";
-        if (p.has_poll && p.poll_data) {
-          try {
-            const poll = JSON.parse(p.poll_data);
-            const totalVotes = poll.choices.reduce((s, c) => s + c.count, 0);
-            const maxCount = Math.max(...poll.choices.map(c => c.count));
-            pollHTML = `<div class="poll">` +
-              poll.choices.map(c => {
-                const pct = totalVotes ? Math.round(c.count / totalVotes * 100) : 0;
-                const isWinner = c.count === maxCount && totalVotes > 0;
-                return `<div class="poll-choice">
-                  <span class="poll-label" title="${escapeHTML(c.text)}">${escapeHTML(c.text)}</span>
-                  <div class="poll-bar-track"><div class="poll-bar-fill${isWinner ? " winner" : ""}" style="width:${pct}%"></div></div>
-                  <span class="poll-count">${c.count} (${pct}%)</span>
-                </div>`;
-              }).join("") +
-              `<div class="poll-total">${totalVotes} votes</div></div>`;
-          } catch {}
-        }
-
-        const mediaEls = assets.map(a => {
-          const proxied = `/api/asset?url=${encodeURIComponent(a.url)}`;
-          if (a.type === "video") return `<video src="${proxied}" controls preload="none"></video>`;
-          return `<img src="${proxied}" loading="lazy" alt="Post image">`;
+      $posts.querySelectorAll(".post.clickable").forEach(el => {
+        el.addEventListener("click", (e) => {
+          if (e.target.closest("video, a")) return;
+          const postId = el.dataset.postId;
+          history.pushState({ postId }, "", `#post/${postId}`);
+          loadPostDetail(postId, false);
         });
-
-        return `
-          <div class="post">
-            <div class="post-header">
-              ${p.identity_emoji ? `<span class="post-emoji">${p.identity_emoji}</span>` : ""}
-              <span class="post-alias">${escapeHTML(p.identity_name || p.alias || "Anonymous")}</span>
-              <span>\u00B7</span>
-              <span>${timeAgo(p.created_at)}</span>
-            </div>
-            ${quoteHTML}
-            <div class="post-text">${highlightText(p.text, query)}</div>
-            ${pollHTML}
-            ${mediaEls.length ? `<div class="post-media">${mediaEls.join("")}</div>` : ""}
-            <div class="post-footer">
-              <span class="${voteClass}">\u25B2 ${p.vote_total}</span>
-              <span>\uD83D\uDCAC ${p.comment_count}</span>
-              <span>${new Date(p.created_at).toLocaleString()}</span>
-            </div>
-          </div>
-        `;
-      }).join("");
+      });
     }
 
     function renderPagination(page, pages) {
@@ -592,6 +745,89 @@
         <span>${page} / ${pages}</span>
         <button ${page >= pages ? "disabled" : ""} onclick="search(${page + 1})">Next \u2192</button>
       `;
+    }
+
+    function renderComment(c, isReply = false) {
+      const assets = JSON.parse(c.assets || "[]");
+      const voteClass = c.vote_total > 0 ? "vote-positive" : c.vote_total < 0 ? "vote-negative" : "";
+      const mediaEls = assets.map(a => {
+        const proxied = `/api/asset?url=${encodeURIComponent(a.url)}`;
+        if (a.type === "video") return `<video src="${proxied}" controls preload="none"></video>`;
+        return `<img src="${proxied}" loading="lazy" alt="Comment image">`;
+      });
+
+      return `
+        <div class="comment${isReply ? " reply" : ""}">
+          <div class="comment-header">
+            ${c.identity_emoji ? `<span class="post-emoji">${c.identity_emoji}</span>` : ""}
+            <span class="post-alias">${escapeHTML(c.identity_name || c.alias || "Anonymous")}</span>
+            <span>\u00B7</span>
+            <span>${timeAgo(c.created_at)}</span>
+          </div>
+          <div class="comment-text">${escapeHTML(c.text)}</div>
+          ${mediaEls.length ? `<div class="comment-media">${mediaEls.join("")}</div>` : ""}
+          <div class="comment-footer">
+            <span class="${voteClass}">\u25B2 ${c.vote_total}</span>
+            <span>${new Date(c.created_at).toLocaleString()}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    async function loadPostDetail(postId, pushState = true) {
+      showDetailView();
+      $detailContent.innerHTML = '<div class="loading">Loading post...</div>';
+
+      if (pushState) {
+        history.pushState({ postId }, "", `#post/${postId}`);
+      }
+
+      try {
+        const res = await fetch(`/api/post/${postId}`);
+        if (!res.ok) {
+          $detailContent.innerHTML = '<div class="empty"><p>Post not found</p></div>';
+          return;
+        }
+        const { post, comments } = await res.json();
+
+        const postHTML = renderPostCard(post, null, false);
+
+        const topLevel = [];
+        const repliesMap = {};
+        for (const c of comments) {
+          if (!c.reply_post_id || c.reply_post_id === postId) {
+            topLevel.push(c);
+          } else {
+            if (!repliesMap[c.reply_post_id]) repliesMap[c.reply_post_id] = [];
+            repliesMap[c.reply_post_id].push(c);
+          }
+        }
+
+        let commentsHTML = "";
+        if (!comments.length && post.comment_count > 0) {
+          commentsHTML = `<div class="no-comments">Comments are still being loaded. Check back soon.</div>`;
+        } else if (!comments.length) {
+          commentsHTML = `<div class="no-comments">No comments</div>`;
+        } else {
+          for (const c of topLevel) {
+            commentsHTML += renderComment(c, false);
+            const replies = repliesMap[c.id] || [];
+            for (const r of replies) {
+              commentsHTML += renderComment(r, true);
+            }
+          }
+        }
+
+        $detailContent.innerHTML = `
+          ${postHTML}
+          <div class="comments-section">
+            <h3>\uD83D\uDCAC ${comments.length} Comment${comments.length === 1 ? "" : "s"}</h3>
+            ${commentsHTML}
+          </div>
+        `;
+      } catch (err) {
+        $detailContent.innerHTML = `<div class="empty"><p>Failed to load post</p><p>${err.message}</p></div>`;
+      }
     }
 
     $query.addEventListener("input", () => {
@@ -607,7 +843,15 @@
     });
 
     loadStats();
-    search(1);
+
+    const hash = window.location.hash;
+    if (hash.startsWith("#post/")) {
+      const postId = hash.slice(6);
+      loadPostDetail(postId, false);
+      history.replaceState({ postId }, "", hash);
+    } else {
+      search(1);
+    }
   </script>
 </body>
 </html>

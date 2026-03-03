@@ -19,6 +19,7 @@ export async function getDB() {
   if (existsSync(DB_PATH)) {
     const buf = readFileSync(DB_PATH);
     db = new SQL.Database(buf);
+    migrateSchema(db);
   } else {
     db = new SQL.Database();
     initSchema(db);
@@ -26,6 +27,25 @@ export async function getDB() {
   }
 
   return db;
+}
+
+function migrateSchema(db) {
+  try { db.run(`ALTER TABLE posts ADD COLUMN comments_scraped_at TEXT`); } catch {}
+  db.run(`
+    CREATE TABLE IF NOT EXISTS comments (
+      id              TEXT PRIMARY KEY,
+      post_id         TEXT NOT NULL,
+      text            TEXT NOT NULL DEFAULT '',
+      alias           TEXT,
+      identity_name   TEXT,
+      identity_emoji  TEXT,
+      vote_total      INTEGER NOT NULL DEFAULT 0,
+      reply_post_id   TEXT,
+      created_at      TEXT NOT NULL,
+      assets          TEXT DEFAULT '[]'
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id)`);
 }
 
 export function saveDB(db) {
@@ -58,6 +78,22 @@ function initSchema(db) {
   db.run(`CREATE INDEX IF NOT EXISTS idx_posts_group ON posts(group_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_posts_votes ON posts(vote_total)`);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS comments (
+      id              TEXT PRIMARY KEY,
+      post_id         TEXT NOT NULL,
+      text            TEXT NOT NULL DEFAULT '',
+      alias           TEXT,
+      identity_name   TEXT,
+      identity_emoji  TEXT,
+      vote_total      INTEGER NOT NULL DEFAULT 0,
+      reply_post_id   TEXT,
+      created_at      TEXT NOT NULL,
+      assets          TEXT DEFAULT '[]'
+    )
+  `);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id)`);
 
   db.run(`
     CREATE VIRTUAL TABLE IF NOT EXISTS posts_fts USING fts4(
@@ -173,4 +209,40 @@ export function upsertPost(db, post) {
       params
     );
   }
+}
+
+export function upsertComment(db, comment, postId) {
+  const params = [
+    comment.id,
+    postId,
+    comment.text || "",
+    comment.alias || null,
+    comment.identity?.name || null,
+    comment.identity?.conversation_icon?.emoji || null,
+    comment.vote_total ?? 0,
+    comment.reply_post_id || null,
+    comment.created_at,
+    JSON.stringify(comment.assets || []),
+  ];
+
+  const existing = db.exec(`SELECT id FROM comments WHERE id = ?`, [comment.id]);
+  if (existing.length > 0 && existing[0].values.length > 0) {
+    db.run(
+      `UPDATE comments SET post_id=?, text=?, alias=?, identity_name=?, identity_emoji=?,
+       vote_total=?, reply_post_id=?, created_at=?, assets=? WHERE id=?`,
+      [params[1], params[2], params[3], params[4], params[5],
+       params[6], params[7], params[8], params[9], params[0]]
+    );
+  } else {
+    db.run(
+      `INSERT INTO comments (id, post_id, text, alias, identity_name, identity_emoji,
+       vote_total, reply_post_id, created_at, assets)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params
+    );
+  }
+}
+
+export function markCommentsScraped(db, postId) {
+  db.run(`UPDATE posts SET comments_scraped_at = datetime('now') WHERE id = ?`, [postId]);
 }

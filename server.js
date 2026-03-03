@@ -1,6 +1,6 @@
 import express from "express";
 import { SidechatAPIClient } from "sidechat.js";
-import { getDB, upsertPost, saveDB, disableFTSTriggers, rebuildFTS, DB_PATH } from "./db.js";
+import { getDB, upsertPost, upsertComment, markCommentsScraped, saveDB, disableFTSTriggers, rebuildFTS, DB_PATH } from "./db.js";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
@@ -81,6 +81,123 @@ async function autoScrape() {
   }
 }
 
+const COMMENT_BATCH_SIZE = parseInt(process.env.COMMENT_BATCH_SIZE || "100", 10);
+let isScrapingComments = false;
+let commentBackfillDone = false;
+
+function getUnscrapedCommentCount() {
+  try {
+    const r = db.exec("SELECT COUNT(*) FROM posts WHERE comments_scraped_at IS NULL AND comment_count > 0");
+    return r[0]?.values[0]?.[0] || 0;
+  } catch { return 0; }
+}
+
+async function commentBackfillLoop() {
+  if (isScrapingComments || isBackfilling) {
+    setTimeout(commentBackfillLoop, 10000);
+    return;
+  }
+
+  const token = process.env.SIDECHAT_TOKEN;
+  if (!token) return;
+
+  isScrapingComments = true;
+  const delayMs = parseInt(process.env.SIDECHAT_DELAY_MS || "0", 10);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  try {
+    const api = new SidechatAPIClient(token);
+    const postsToScrape = queryAll(
+      `SELECT id FROM posts WHERE comments_scraped_at IS NULL AND comment_count > 0
+       ORDER BY created_at DESC LIMIT ?`,
+      [COMMENT_BATCH_SIZE]
+    );
+
+    if (!postsToScrape.length) {
+      commentBackfillDone = true;
+      console.log("[comment-scrape] Backfill complete. Switching to 24h refresh.");
+      isScrapingComments = false;
+      scheduleCommentRefresh();
+      return;
+    }
+
+    let totalComments = 0;
+    for (const { id } of postsToScrape) {
+      try {
+        const comments = await api.getPostComments(id);
+        for (const c of comments) {
+          upsertComment(db, c, id);
+        }
+        markCommentsScraped(db, id);
+        totalComments += comments.length;
+      } catch (err) {
+        console.error(`[comment-scrape] Error on post ${id}:`, err.message);
+        markCommentsScraped(db, id);
+      }
+      if (delayMs > 0) await sleep(delayMs);
+    }
+
+    saveDB(db);
+    const remaining = getUnscrapedCommentCount();
+    console.log(`[comment-scrape] Scraped ${totalComments} comments from ${postsToScrape.length} posts (${remaining} posts remaining)`);
+  } catch (err) {
+    console.error("[comment-scrape] Error:", err.message);
+  } finally {
+    isScrapingComments = false;
+  }
+
+  if (!commentBackfillDone) {
+    setTimeout(commentBackfillLoop, 2000);
+  }
+}
+
+async function commentRefresh() {
+  if (isScrapingComments || isBackfilling) return;
+
+  const token = process.env.SIDECHAT_TOKEN;
+  if (!token) return;
+
+  isScrapingComments = true;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  try {
+    const api = new SidechatAPIClient(token);
+    const postsToScrape = queryAll(
+      `SELECT id FROM posts WHERE comments_scraped_at IS NULL AND comment_count > 0
+       ORDER BY created_at DESC LIMIT ?`,
+      [COMMENT_BATCH_SIZE]
+    );
+
+    let totalComments = 0;
+    for (const { id } of postsToScrape) {
+      try {
+        const comments = await api.getPostComments(id);
+        for (const c of comments) {
+          upsertComment(db, c, id);
+        }
+        markCommentsScraped(db, id);
+        totalComments += comments.length;
+      } catch (err) {
+        console.error(`[comment-scrape] Error on post ${id}:`, err.message);
+        markCommentsScraped(db, id);
+      }
+    }
+
+    if (totalComments > 0) {
+      saveDB(db);
+      console.log(`[comment-refresh] Scraped ${totalComments} comments from ${postsToScrape.length} new posts`);
+    }
+  } catch (err) {
+    console.error("[comment-refresh] Error:", err.message);
+  } finally {
+    isScrapingComments = false;
+  }
+}
+
+function scheduleCommentRefresh() {
+  setInterval(commentRefresh, 24 * 60 * 60 * 1000);
+}
+
 async function init() {
   db = await getDB();
   console.log(`Database: ${DB_PATH}`);
@@ -89,6 +206,9 @@ async function init() {
     console.log(`Auto-scrape enabled: every ${SCRAPE_INTERVAL_MINS} minutes`);
     autoScrape();
     setInterval(autoScrape, SCRAPE_INTERVAL_MINS * 60 * 1000);
+
+    console.log(`Comment scrape enabled: continuous backfill (batch ${COMMENT_BATCH_SIZE}), then 24h refresh`);
+    setTimeout(commentBackfillLoop, 30000);
   }
 }
 
@@ -207,6 +327,30 @@ app.get("/api/asset", async (req, res) => {
     res.send(buffer);
   } catch {
     res.status(502).json({ error: "Failed to fetch asset" });
+  }
+});
+
+app.get("/api/post/:id", (req, res) => {
+  try {
+    const post = queryOne("SELECT * FROM posts WHERE id = ?", [req.params.id]);
+    if (!post) return res.status(404).json({ error: "Post not found" });
+
+    if (post.quote_post_id) {
+      post.quoted_post = queryOne(
+        "SELECT id, text, alias, identity_name, identity_emoji, vote_total, created_at FROM posts WHERE id = ?",
+        [post.quote_post_id]
+      );
+    }
+
+    const comments = queryAll(
+      "SELECT * FROM comments WHERE post_id = ? ORDER BY created_at ASC",
+      [req.params.id]
+    );
+
+    res.json({ post, comments });
+  } catch (err) {
+    console.error("Post detail error:", err);
+    res.status(500).json({ error: "Internal server error." });
   }
 });
 
