@@ -447,6 +447,52 @@ app.get("/api/usage", (_req, res) => {
   }
 });
 
+app.get("/api/charts", (_req, res) => {
+  try {
+    const postsPerDay = queryAll(
+      `SELECT date(created_at) as day, COUNT(*) as count
+       FROM posts GROUP BY date(created_at) ORDER BY day ASC`
+    );
+    const postsPerMonth = queryAll(
+      `SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as count
+       FROM posts GROUP BY strftime('%Y-%m', created_at) ORDER BY month ASC`
+    );
+    const postsByHour = queryAll(
+      `SELECT CAST(strftime('%H', created_at) AS INTEGER) as hour, COUNT(*) as count
+       FROM posts GROUP BY strftime('%H', created_at) ORDER BY hour ASC`
+    );
+    const postsByDayOfWeek = queryAll(
+      `SELECT CAST(strftime('%w', created_at) AS INTEGER) as dow, COUNT(*) as count
+       FROM posts GROUP BY strftime('%w', created_at) ORDER BY dow ASC`
+    );
+    const topPosters = queryAll(
+      `SELECT COALESCE(identity_name, alias, 'Anonymous') as name, COUNT(*) as count
+       FROM posts GROUP BY name ORDER BY count DESC LIMIT 15`
+    );
+    const voteDistribution = queryAll(
+      `SELECT
+        CASE
+          WHEN vote_total < 0 THEN 'negative'
+          WHEN vote_total = 0 THEN '0'
+          WHEN vote_total BETWEEN 1 AND 10 THEN '1-10'
+          WHEN vote_total BETWEEN 11 AND 50 THEN '11-50'
+          WHEN vote_total BETWEEN 51 AND 100 THEN '51-100'
+          WHEN vote_total BETWEEN 101 AND 500 THEN '101-500'
+          ELSE '500+'
+        END as bucket,
+        COUNT(*) as count
+       FROM posts GROUP BY bucket`
+    );
+    const bucketOrder = ['negative','0','1-10','11-50','51-100','101-500','500+'];
+    voteDistribution.sort((a,b) => bucketOrder.indexOf(a.bucket) - bucketOrder.indexOf(b.bucket));
+
+    res.json({ postsPerDay, postsPerMonth, postsByHour, postsByDayOfWeek, topPosters, voteDistribution });
+  } catch (err) {
+    console.error("Charts error:", err);
+    res.status(500).json({ error: "Internal server error." });
+  }
+});
+
 app.get("/api/stats", (_req, res) => {
   try {
     const stats = queryOne(

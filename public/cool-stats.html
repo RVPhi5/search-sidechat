@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cool Stats - Sidechat Search</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #111;
+      color: #e8e8e8;
+      line-height: 1.5;
+      padding: 24px;
+    }
+
+    .container { max-width: 960px; margin: 0 auto; }
+
+    h1 { font-size: 1.5rem; margin-bottom: 8px; color: #fff; }
+    .subtitle { font-size: 0.85rem; color: #888; margin-bottom: 28px; }
+
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 24px;
+    }
+
+    .chart-card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .chart-card h2 {
+      font-size: 0.95rem;
+      color: #ccc;
+      margin-bottom: 16px;
+    }
+
+    .chart-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 700px) {
+      .chart-row { grid-template-columns: 1fr; }
+    }
+
+    .chart-wrap {
+      position: relative;
+      width: 100%;
+      height: 300px;
+    }
+
+    .chart-wrap.tall {
+      height: 400px;
+    }
+
+    a { color: #c4488f; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .back { margin-bottom: 20px; display: inline-block; font-size: 0.9rem; }
+
+    .loading { color: #888; padding: 60px; text-align: center; font-size: 1rem; }
+
+    .summary-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .summary-card {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 10px;
+      padding: 14px;
+      text-align: center;
+    }
+
+    .summary-card .val { font-size: 1.6rem; font-weight: 700; color: #fff; }
+    .summary-card .lbl { font-size: 0.72rem; color: #888; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="/" class="back">&larr; Back to search</a>
+    <h1>Cool Stats</h1>
+    <div class="subtitle" id="subtitle"></div>
+    <div id="content"><div class="loading">Loading charts...</div></div>
+  </div>
+
+  <script>
+    const pink = "#c4488f";
+    const pinkLight = "rgba(196, 72, 143, 0.3)";
+    const green = "#00b894";
+    const greenLight = "rgba(0, 184, 148, 0.3)";
+    const purple = "#a855f7";
+    const yellow = "#f59e0b";
+    const blue = "#3b82f6";
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    Chart.defaults.color = "#888";
+    Chart.defaults.borderColor = "#2a2a2a";
+    Chart.defaults.font.family = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+
+    async function load() {
+      try {
+        const [charts, stats] = await Promise.all([
+          fetch("/api/charts").then(r => r.json()),
+          fetch("/api/stats").then(r => r.json()),
+        ]);
+        render(charts, stats);
+      } catch (err) {
+        document.getElementById("content").innerHTML = `<div class="loading">Failed to load: ${err.message}</div>`;
+      }
+    }
+
+    function render(c, s) {
+      const oldest = s.oldest_post ? new Date(s.oldest_post).toLocaleDateString() : "?";
+      const newest = s.newest_post ? new Date(s.newest_post).toLocaleDateString() : "?";
+      document.getElementById("subtitle").textContent = `${(s.total_posts || 0).toLocaleString()} posts from ${oldest} to ${newest}`;
+
+      const avgVotes = s.avg_votes || 0;
+      const avgComments = s.total_posts ? Math.round(s.total_comments / s.total_posts * 10) / 10 : 0;
+      const busiestMonth = c.postsPerMonth.reduce((a, b) => b.count > a.count ? b : a, { count: 0 });
+      const busiestDay = c.postsByDayOfWeek.reduce((a, b) => b.count > a.count ? b : a, { count: 0 });
+
+      document.getElementById("content").innerHTML = `
+        <div class="summary-cards">
+          <div class="summary-card"><div class="val">${(s.total_posts || 0).toLocaleString()}</div><div class="lbl">Total Posts</div></div>
+          <div class="summary-card"><div class="val">${(s.total_comments || 0).toLocaleString()}</div><div class="lbl">Total Comments</div></div>
+          <div class="summary-card"><div class="val">${avgVotes}</div><div class="lbl">Avg Votes</div></div>
+          <div class="summary-card"><div class="val">${avgComments}</div><div class="lbl">Avg Comments</div></div>
+          <div class="summary-card"><div class="val">${busiestMonth.month || "?"}</div><div class="lbl">Busiest Month</div></div>
+          <div class="summary-card"><div class="val">${dayNames[busiestDay.dow] || "?"}</div><div class="lbl">Busiest Day</div></div>
+        </div>
+
+        <div class="chart-grid">
+          <div class="chart-card">
+            <h2>Posts Per Month</h2>
+            <div class="chart-wrap tall"><canvas id="monthChart"></canvas></div>
+          </div>
+          <div class="chart-card">
+            <h2>Posts Per Day</h2>
+            <div class="chart-wrap tall"><canvas id="dayChart"></canvas></div>
+          </div>
+          <div class="chart-row">
+            <div class="chart-card">
+              <h2>Activity by Hour</h2>
+              <div class="chart-wrap"><canvas id="hourChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <h2>Activity by Day of Week</h2>
+              <div class="chart-wrap"><canvas id="dowChart"></canvas></div>
+            </div>
+          </div>
+          <div class="chart-row">
+            <div class="chart-card">
+              <h2>Vote Distribution</h2>
+              <div class="chart-wrap"><canvas id="voteChart"></canvas></div>
+            </div>
+            <div class="chart-card">
+              <h2>Top Posters</h2>
+              <div class="chart-wrap"><canvas id="posterChart"></canvas></div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      new Chart(document.getElementById("monthChart"), {
+        type: "bar",
+        data: {
+          labels: c.postsPerMonth.map(d => d.month),
+          datasets: [{
+            label: "Posts",
+            data: c.postsPerMonth.map(d => d.count),
+            backgroundColor: pink,
+            borderRadius: 4,
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+
+      new Chart(document.getElementById("dayChart"), {
+        type: "line",
+        data: {
+          labels: c.postsPerDay.map(d => d.day),
+          datasets: [{
+            label: "Posts",
+            data: c.postsPerDay.map(d => d.count),
+            borderColor: pink,
+            backgroundColor: pinkLight,
+            fill: true,
+            tension: 0.3,
+            pointRadius: 0,
+            borderWidth: 2,
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { ticks: { maxTicksLimit: 12 } },
+            y: { beginAtZero: true }
+          }
+        }
+      });
+
+      const hours = Array.from({ length: 24 }, (_, i) => i);
+      const hourMap = Object.fromEntries(c.postsByHour.map(d => [d.hour, d.count]));
+      new Chart(document.getElementById("hourChart"), {
+        type: "bar",
+        data: {
+          labels: hours.map(h => `${h}:00`),
+          datasets: [{
+            label: "Posts",
+            data: hours.map(h => hourMap[h] || 0),
+            backgroundColor: purple,
+            borderRadius: 3,
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+
+      const dowMap = Object.fromEntries(c.postsByDayOfWeek.map(d => [d.dow, d.count]));
+      new Chart(document.getElementById("dowChart"), {
+        type: "bar",
+        data: {
+          labels: dayNames,
+          datasets: [{
+            label: "Posts",
+            data: [0,1,2,3,4,5,6].map(d => dowMap[d] || 0),
+            backgroundColor: green,
+            borderRadius: 3,
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+
+      new Chart(document.getElementById("voteChart"), {
+        type: "doughnut",
+        data: {
+          labels: c.voteDistribution.map(d => d.bucket),
+          datasets: [{
+            data: c.voteDistribution.map(d => d.count),
+            backgroundColor: ["#e17055", "#636e72", "#74b9ff", "#a855f7", "#00b894", "#f59e0b", "#c4488f"],
+            borderWidth: 0,
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: "right", labels: { boxWidth: 12, padding: 8, font: { size: 11 } } } }
+        }
+      });
+
+      new Chart(document.getElementById("posterChart"), {
+        type: "bar",
+        data: {
+          labels: c.topPosters.map(d => d.name),
+          datasets: [{
+            label: "Posts",
+            data: c.topPosters.map(d => d.count),
+            backgroundColor: yellow,
+            borderRadius: 3,
+          }]
+        },
+        options: {
+          indexAxis: "y",
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { x: { beginAtZero: true } }
+        }
+      });
+    }
+
+    load();
+  </script>
+</body>
+</html>
