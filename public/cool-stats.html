@@ -213,11 +213,12 @@
       });
 
       const hours = Array.from({ length: 24 }, (_, i) => i);
+      const hourToAMPM = h => h === 0 ? "12 AM" : h === 12 ? "12 PM" : h < 12 ? `${h} AM` : `${h - 12} PM`;
       const hourMap = Object.fromEntries(c.postsByHour.map(d => [d.hour, d.count]));
       new Chart(document.getElementById("hourChart"), {
         type: "bar",
         data: {
-          labels: hours.map(h => `${h}:00`),
+          labels: hours.map(hourToAMPM),
           datasets: [{
             label: "Posts",
             data: hours.map(h => hourMap[h] || 0),
