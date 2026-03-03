@@ -125,7 +125,6 @@
       document.getElementById("subtitle").textContent = `${(s.total_posts || 0).toLocaleString()} posts from ${oldest} to ${newest}`;
 
       const avgVotes = s.avg_votes || 0;
-      const avgComments = s.total_posts ? Math.round(s.total_comments / s.total_posts * 10) / 10 : 0;
       const busiestMonth = c.postsPerMonth.reduce((a, b) => b.count > a.count ? b : a, { count: 0 });
       const busiestDay = c.postsByDayOfWeek.reduce((a, b) => b.count > a.count ? b : a, { count: 0 });
       const busiestHourRaw = c.postsByHour.reduce((a, b) => b.count > a.count ? b : a, { hour: 0, count: 0 });
@@ -137,7 +136,6 @@
           <div class="summary-card"><div class="val">${(s.total_posts || 0).toLocaleString()}</div><div class="lbl">Total Posts</div></div>
           <div class="summary-card"><div class="val">${(s.total_comments || 0).toLocaleString()}</div><div class="lbl">Total Comments</div></div>
           <div class="summary-card"><div class="val">${avgVotes}</div><div class="lbl">Avg Votes</div></div>
-          <div class="summary-card"><div class="val">${avgComments}</div><div class="lbl">Avg Comments</div></div>
           <div class="summary-card"><div class="val">${busiestMonth.month || "?"}</div><div class="lbl">Busiest Month</div></div>
           <div class="summary-card"><div class="val">${dayNames[busiestDay.dow] || "?"}</div><div class="lbl">Busiest Day</div></div>
           <div class="summary-card"><div class="val">${busiestHour}</div><div class="lbl">Busiest Hour</div></div>
