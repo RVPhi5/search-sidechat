@@ -57,6 +57,15 @@ async function autoScrape() {
       for (const post of posts) {
         if (cutoff && new Date(post.created_at) < cutoff) { hitCutoff = true; continue; }
         upsertPost(db, post);
+        if (post.comment_count > 0) {
+          try {
+            const comments = await api.getPostComments(post.id);
+            for (const c of comments) upsertComment(db, c, post.id);
+            markCommentsScraped(db, post.id);
+          } catch (err) {
+            console.error(`[auto-scrape] Comment fetch failed for ${post.id}:`, err.message);
+          }
+        }
         total++;
       }
       if (hitCutoff) break;
@@ -73,7 +82,8 @@ async function autoScrape() {
 
     rebuildFTS(db);
     saveDB(db);
-    console.log(`[auto-scrape] ${total} posts updated at ${new Date().toISOString()} (total in DB: ${getPostCount()})`);
+    const commentCount = (() => { try { const r = db.exec("SELECT COUNT(*) FROM comments"); return r[0]?.values[0]?.[0] || 0; } catch { return 0; } })();
+    console.log(`[auto-scrape] ${total} posts updated at ${new Date().toISOString()} (total in DB: ${getPostCount()} posts, ${commentCount} comments)`);
   } catch (err) {
     console.error("[auto-scrape] Error:", err.message);
   } finally {
