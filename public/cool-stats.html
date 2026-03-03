@@ -128,6 +128,9 @@
       const avgComments = s.total_posts ? Math.round(s.total_comments / s.total_posts * 10) / 10 : 0;
       const busiestMonth = c.postsPerMonth.reduce((a, b) => b.count > a.count ? b : a, { count: 0 });
       const busiestDay = c.postsByDayOfWeek.reduce((a, b) => b.count > a.count ? b : a, { count: 0 });
+      const busiestHourRaw = c.postsByHour.reduce((a, b) => b.count > a.count ? b : a, { hour: 0, count: 0 });
+      const hourToAMPM = h => h === 0 ? "12 AM" : h === 12 ? "12 PM" : h < 12 ? `${h} AM` : `${h - 12} PM`;
+      const busiestHour = c.postsByHour.length ? hourToAMPM(busiestHourRaw.hour) : "?";
 
       document.getElementById("content").innerHTML = `
         <div class="summary-cards">
@@ -137,13 +140,10 @@
           <div class="summary-card"><div class="val">${avgComments}</div><div class="lbl">Avg Comments</div></div>
           <div class="summary-card"><div class="val">${busiestMonth.month || "?"}</div><div class="lbl">Busiest Month</div></div>
           <div class="summary-card"><div class="val">${dayNames[busiestDay.dow] || "?"}</div><div class="lbl">Busiest Day</div></div>
+          <div class="summary-card"><div class="val">${busiestHour}</div><div class="lbl">Busiest Hour</div></div>
         </div>
 
         <div class="chart-grid">
-          <div class="chart-card">
-            <h2>Posts Per Month</h2>
-            <div class="chart-wrap tall"><canvas id="monthChart"></canvas></div>
-          </div>
           <div class="chart-card">
             <h2>Posts Per Day</h2>
             <div class="chart-wrap tall"><canvas id="dayChart"></canvas></div>
@@ -168,24 +168,6 @@
           </div>
         </div>
       `;
-
-      new Chart(document.getElementById("monthChart"), {
-        type: "bar",
-        data: {
-          labels: c.postsPerMonth.map(d => d.month),
-          datasets: [{
-            label: "Posts",
-            data: c.postsPerMonth.map(d => d.count),
-            backgroundColor: pink,
-            borderRadius: 4,
-          }]
-        },
-        options: {
-          responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { y: { beginAtZero: true } }
-        }
-      });
 
       new Chart(document.getElementById("dayChart"), {
         type: "line",
@@ -213,7 +195,6 @@
       });
 
       const hours = Array.from({ length: 24 }, (_, i) => i);
-      const hourToAMPM = h => h === 0 ? "12 AM" : h === 12 ? "12 PM" : h < 12 ? `${h} AM` : `${h - 12} PM`;
       const hourMap = Object.fromEntries(c.postsByHour.map(d => [d.hour, d.count]));
       new Chart(document.getElementById("hourChart"), {
         type: "bar",
