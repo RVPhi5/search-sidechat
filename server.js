@@ -246,12 +246,12 @@ function getClientIP(req) {
   return req.headers["x-forwarded-for"]?.split(",")[0]?.trim() || req.ip;
 }
 
-app.use(express.static(join(__dirname, "public")));
-
 app.get("/", (req, res, next) => {
   trackUsage("visit", null, getClientIP(req));
   next();
 });
+
+app.use(express.static(join(__dirname, "public")));
 
 function queryAll(sql, params = []) {
   const result = db.exec(sql, params);
