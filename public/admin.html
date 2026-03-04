@@ -91,11 +91,8 @@
 
     async function load() {
       try {
-        const [usage, stats] = await Promise.all([
-          fetch("/api/usage").then(r => r.json()),
-          fetch("/api/stats").then(r => r.json()),
-        ]);
-        render(usage, stats);
+        const usage = await fetch("/api/usage").then(r => r.json());
+        render(usage);
       } catch (err) {
         $content.innerHTML = `<div class="loading">Failed to load: ${err.message}</div>`;
       }
@@ -121,14 +118,6 @@
           <div class="card">
             <div class="label">All-Time Searches</div>
             <div class="value">${u.all_time.searches.toLocaleString()}</div>
-          </div>
-          <div class="card">
-            <div class="label">Total Posts</div>
-            <div class="value">${(s.total_posts || 0).toLocaleString()}</div>
-          </div>
-          <div class="card">
-            <div class="label">Total Comments</div>
-            <div class="value">${(s.total_comments || 0).toLocaleString()}</div>
           </div>
         </div>`;
 
